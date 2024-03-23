@@ -5,8 +5,10 @@
   "description": "Automatically toggles the sidebar on AWS documentation pages.",
   "permissions": [
     "tabs",
-    "scripting"
+    "scripting",
+		"storage"
   ],
+	"options_page": "options.html",
   "background": {
     "service_worker": "background.js"
   },

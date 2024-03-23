@@ -1,4 +1,16 @@
-function closeAsideAndScrollToAnchor() {
+chrome.runtime.onInstalled.addListener(function (details) {
+  if (details.reason === 'install') {
+
+    chrome.storage.local.set({
+      leftSidebar: 'asis',
+      rightSidebar: 'close'
+    }, function () {
+      console.log('Default values set in local storage');
+    });
+  }
+});
+
+function toggleSidebarsAndScrollToAnchor() {
   // Set this flag to true for debugging, false for production
   const DEBUG = false;
   function log(...args) {
@@ -7,90 +19,99 @@ function closeAsideAndScrollToAnchor() {
     }
   }
 
-  log('closeAsideAndScrollToAnchor function called');
+  log('toggleSidebarsAndScrollToAnchor function called');
 
-  // Find the open aside element
-  const asides = document.querySelectorAll('aside[class=""]');
-  const openAside = Array.from(asides).find(aside => aside.getAttribute('aria-hidden') === 'false');
+  chrome.storage.local.get(['leftSidebar', 'rightSidebar'], function (settings) {
+    log('Settings loaded:', settings);
 
-  if (openAside) {
-    log('Open aside found');
+    // Find the open aside element
+    const openAside = document.querySelector('aside[aria-hidden="false"]');
+    const closedAside = document.querySelector('aside[aria-hidden="true"]');
 
-    // Find and click the close button
-    const closeButton = openAside.querySelector('button[class^="awsui_tools-close"]');
-    if (closeButton) {
-      log('Close button found');
-      closeButton.click();
-      log('Close button clicked');
+    // Toggle right sidebar
+    if (openAside && settings.rightSidebar === 'close') {
+      log('Closing the right sidebar');
+      openAside.querySelector('button[class^="awsui_tools-close"]')?.click();
+    } else if (closedAside && settings.rightSidebar === 'open') {
+      log('Opening the right sidebar');
+      closedAside.querySelector('button[class^="awsui_tools-toggle"]')?.click();
     } else {
-      log('Close button not found');
+      log('Open aside not found or right sidebar setting not found');
     }
-  } else {
-    log('No open aside found');
-  }
 
-  // Check if the URL contains an anchor
-  if (window.location.hash) {
-    log('Anchor found in URL:', window.location.hash);
+    // Toggle left sidebar navigation
+    document.querySelectorAll('nav[class^="awsui_toggle"]').forEach((nav) => {
+      const ariaHidden = nav.getAttribute('aria-hidden');
 
-    // Extract the anchor ID from the URL
+      if (ariaHidden === 'false' && settings.leftSidebar === 'open') {
+        log('Closing the left sidebar');
+        nav.querySelector('button[class^="awsui_navigation-toggle"]')?.click();
+      } else if (ariaHidden === 'true' && settings.leftSidebar === 'close') {
+        log('Opening the left sidebar');
+        const drawerContent = nav.closest('[class^="awsui_drawer-content_"]');
+        drawerContent?.querySelector('button[class^="awsui_navigation-close"]')?.click();
+      }
+    });
+
+    // Scroll to the anchor if present in the URL
     const anchorId = window.location.hash.substring(1);
-
-    // Find the anchor element
-    const anchorElement = document.getElementById(anchorId);
-
-    if (anchorElement) {
-      log('Anchor element found:', anchorElement);
-
-      // Close the aside and scroll to the anchor element after a delay
-      setTimeout(() => {
-        anchorElement.scrollIntoView({behavior: 'auto'});
-        // Return true to indicate successful scroll
-        return true;
-      }, 500);
+    if (anchorId) {
+      log('Anchor found in URL:', anchorId);
+      const anchorElement = document.getElementById(anchorId);
+      if (anchorElement) {
+        log('Anchor element found:', anchorElement);
+        setTimeout(() => {
+          anchorElement.scrollIntoView({ behavior: 'auto' });
+        }, 100);
+      } else {
+        log('Anchor element not found for ID:', anchorId);
+      }
     } else {
-      log('Anchor element not found for ID:', anchorId);
+      log('No anchor found in URL');
     }
-  } else {
-    log('No anchor found in URL');
-  }
+  });
 
-  // Return false if scroll was not successful
-  return false;
 }
 
 chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   if (changeInfo.status === 'complete' && tab.url.includes('https://docs.aws.amazon.com/') && tab.active) {
-    console.log('Tab updated and matches conditions');
+
+    // Set this flag to true for debugging, false for production
+    const DEBUG = false;
+    function log(...args) {
+      if (DEBUG) {
+        console.log(...args);
+      }
+    }
 
     let attempts = 0;
     const maxAttempts = 5;
 
-    const tryCloseAsideAndScrollToAnchor = () => {
-      console.log('Attempting to close aside and scroll to anchor, attempt:', attempts + 1);
+    const tryToggleSidebarsAndScrollToAnchor = () => {
+      log('Attempting to close aside and scroll to anchor, attempt:', attempts + 1);
 
-      // Execute the closeAsideAndScrollToAnchor function in the tab's context
+      // Execute the toggleSidebarsAndScrollToAnchor function in the tab's context
       chrome.scripting.executeScript({
         target: { tabId: tabId },
-        function: closeAsideAndScrollToAnchor
+        function: toggleSidebarsAndScrollToAnchor
       }, (results) => {
         attempts++;
 
         // Check if scroll was successful
         if (results && results[0]) {
-          console.log('Scroll successful, stopping further attempts');
+          log('Scroll successful, stopping further attempts');
         } else if (attempts < maxAttempts) {
           // Retry after a delay if maximum attempts not reached
           setTimeout(() => {
-            tryCloseAsideAndScrollToAnchor();
+            tryToggleSidebarsAndScrollToAnchor();
           }, 1000);
         } else {
-          console.log('Max attempts reached');
+          log('Max attempts reached');
         }
       });
     };
 
     // Start the first attempt immediately
-    tryCloseAsideAndScrollToAnchor();
+    tryToggleSidebarsAndScrollToAnchor();
   }
 });
